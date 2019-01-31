@@ -1,9 +1,11 @@
-#include "TM1637.h";
+#include <EEPROM.h>
+#include <TM1637.h>;
 #include <Arduino.h>
 #include <ESP8266WiFi.h>
 #include <ESP8266WiFiMulti.h>
 #include <ESP8266HTTPClient.h>
 #include <WiFiClient.h>
+
 
 /**
    WIFI STUFF
@@ -36,8 +38,8 @@ byte blinkPeriod = 15;
 byte blinkTime = 0;
 
 /**
- * Buzzer stuff
- */
+   Buzzer stuff
+*/
 //Starting frequency for the first sound
 #define FREQ1 80
 //Starting frequency for the second sound
@@ -128,6 +130,16 @@ int menuTimeout = 0;
 #define MENU_TIMEOUT 1000
 
 /**
+   EEPROM stuff
+*/
+//The location in EEPROM of the alarmHours
+const int alarmHoursAdress = 0;
+//The location in EEPROM of the alarmMinutes
+const int alarmMinutesAdress = 1;
+//The location in EEPROM of the alarmStatus (on/off)
+const int alarmStatusAdress = 2;
+
+/**
    Initial starting point of the code
 */
 void setup() {
@@ -141,6 +153,8 @@ void setup() {
   initWifi();
   //Init encoder stuff
   initEncoder();
+  //Read EEProm to see if stuff was saved
+  initEEPROM();
 }
 
 /**
@@ -172,8 +186,11 @@ void loop() {
       //If timesSnoozed is more, nothing happens anymore
 
       //If we have snoozed, also reset the alarm
-      if(snoozeTime > 0) resetAlarmBuzzer();
+      if (snoozeTime > 0) resetAlarmBuzzer();
     } else {
+      //Depending on the clockMode we have before changing, save to EEPROM
+      if(clockMode == HOUR_MODE) saveAlarmHours();
+      else if(clockMode == MINUTE_MODE) saveAlarmMinutes();
       //Circle the modes with a modulus
       clockMode = (clockMode + 1) % 3;
       //Also reset the blinking for now
@@ -190,6 +207,9 @@ void loop() {
     menuTimeout ++;
     //After timeout, reset
     if (menuTimeout > MENU_TIMEOUT) {
+      //Save the values
+      if(clockMode == HOUR_MODE) saveAlarmHours();
+      else if(clockMode == MINUTE_MODE) saveAlarmMinutes();
       //Reset to display mode
       clockMode = DISPLAY_MODE;
       //And reset the timeout
@@ -221,6 +241,7 @@ void loop() {
         alarmVal = 0;
         alarmOn = true;
         resetAlarmBuzzer();
+        saveAlarmStatus();
       }
       else if (alarmVal < (alarmSounding ? ALARM_OFF * 3 : ALARM_OFF)) { //During alarm it's three times as hard to turn it off.
         alarmVal = 0;
@@ -228,6 +249,7 @@ void loop() {
         timesSnoozed = 0;
         snoozeTime = 0;
         alarmSounding = false;
+        saveAlarmStatus();
       }
 
       //Turn the led on/off depending on alarm status
@@ -246,15 +268,74 @@ void loop() {
   }
 
   //If there is an alarm, the sounding will act as a delay, limiting fps
-  if(snoozeTime == 0 && alarmSounding) checkScreeching();
+  if (snoozeTime == 0 && alarmSounding) checkScreeching();
   //Wait 10ms, run at approximately 100fps
   else delay(10);
 }
 
 /**
- * Restores the buzzer variables
+   Starts the read from the EEPROM and checks if any settings
+   we're left last time
+*/
+void initEEPROM() {
+  //First start reading EEPROM
+  EEPROM.begin(512);
+  //Now read alarmHours
+  byte aHours = EEPROM.read(alarmHoursAdress);
+  //And alarmMinutes
+  byte aMins = EEPROM.read(alarmMinutesAdress);
+  //And finally alarm status
+  byte aStatus = EEPROM.read(alarmStatusAdress);
+
+  //And parse this shit
+  alarmHours = constrain(aHours, 0, 23);
+  alarmMinutes = constrain(aMins, 0, 59);
+  alarmOn = aStatus == 1;
+
+  //Turn the led on/off depending on alarm status
+  digitalWrite(pinLED, (alarmOn ? HIGH : LOW));
+}
+
+/**
+ * Saves the alarmHours to EEPROM
  */
-void resetAlarmBuzzer(){
+void saveAlarmHours(){
+  //Writes the value to the right adress, only if it has changed
+  if(EEPROM.read(alarmHoursAdress) != alarmHours){
+    EEPROM.put(alarmHoursAdress, alarmHours);
+  }
+  //And commit the change
+  EEPROM.commit();
+}
+
+/**
+ * Saves the alarmMinutes to EEPROM
+ */
+void saveAlarmMinutes(){
+  //Writes the value to the right adress, only if it has changed
+  if(EEPROM.read(alarmMinutesAdress) != alarmMinutes){
+    EEPROM.put(alarmMinutesAdress, alarmMinutes);
+  }
+  //And commit the change
+  EEPROM.commit();
+}
+
+/**
+ * Saves the alarmStatus to EEPROM
+ */
+void saveAlarmStatus(){
+  //Writes the value to the right adress, only if it has changed
+  if((EEPROM.read(alarmStatusAdress) == 1) != alarmOn){
+    EEPROM.put(alarmStatusAdress, alarmOn);
+  }
+  //And commit the change
+  EEPROM.commit();
+}
+
+/**
+   Restores the buzzer variables
+*/
+void resetAlarmBuzzer() {
   freq1 = FREQ1;
   freq2 = FREQ2;
   beepDelay = BEEP_DELAY;
