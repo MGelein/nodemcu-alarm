@@ -38,26 +38,6 @@ byte blinkPeriod = 15;
 byte blinkTime = 0;
 
 /**
-   Buzzer stuff
-*/
-//Starting frequency for the first sound
-#define FREQ1 80
-//Starting frequency for the second sound
-#define FREQ2 1000
-//Starting delay for the first beep
-#define BEEP_DELAY 1000
-//The frequency the buzzer first makes
-int freq1 = FREQ1;
-//The frequency the buzzer then makes
-int freq2 = FREQ2;
-//The amount of initial silence between beeps
-int beepDelay = BEEP_DELAY;
-//Amount of Hz to increase every beep
-byte freqStep = 50;
-//Amount of time to have less delay every beep
-byte timeStep = 50;
-
-/**
    Mode stuff
 */
 //Only displays the current time
@@ -69,25 +49,9 @@ const byte MINUTE_MODE = 2;
 //The current clock mode
 byte clockMode = DISPLAY_MODE;
 
-/**
-   Encoder variables
-*/
-//The left, interrupt, pin
-const int pinA = D2;
-//The right (non interrupt) pin
-const int pinB = D3;
-//The pin for the buzzer
-const int pinBuzzer = D7;
-//The pin for the pushbutton of the encoder
-const int pinButton = D1;
+
 //The pin for the alarm LED
 const int pinLED = D0;
-//The direction of the turn (1= none, 2 = right, 0 = left)
-volatile byte encoderDir = 1;
-//Amount of updates to ignore any new presses in.
-#define BUTTON_DEBOUNCE 50
-//How many updates of irresponsiveness are left untill we trigger presses again
-byte buttonTimeout = 0;
 
 /**
    Time keeping variables
@@ -129,15 +93,7 @@ int menuTimeout = 0;
 //100 updates / second, means 10 seconds for 1000 updates
 #define MENU_TIMEOUT 1000
 
-/**
-   EEPROM stuff
-*/
-//The location in EEPROM of the alarmHours
-const int alarmHoursAdress = 0;
-//The location in EEPROM of the alarmMinutes
-const int alarmMinutesAdress = 1;
-//The location in EEPROM of the alarmStatus (on/off)
-const int alarmStatusAdress = 2;
+
 
 /**
    Initial starting point of the code
@@ -274,157 +230,6 @@ void loop() {
 }
 
 /**
-   Starts the read from the EEPROM and checks if any settings
-   we're left last time
-*/
-void initEEPROM() {
-  //First start reading EEPROM
-  EEPROM.begin(512);
-  //Now read alarmHours
-  byte aHours = EEPROM.read(alarmHoursAdress);
-  //And alarmMinutes
-  byte aMins = EEPROM.read(alarmMinutesAdress);
-  //And finally alarm status
-  byte aStatus = EEPROM.read(alarmStatusAdress);
-
-  //And parse this shit
-  alarmHours = constrain(aHours, 0, 23);
-  alarmMinutes = constrain(aMins, 0, 59);
-  alarmOn = aStatus == 1;
-
-  //Turn the led on/off depending on alarm status
-  digitalWrite(pinLED, (alarmOn ? HIGH : LOW));
-}
-
-/**
- * Saves the alarmHours to EEPROM
- */
-void saveAlarmHours(){
-  //Writes the value to the right adress, only if it has changed
-  if(EEPROM.read(alarmHoursAdress) != alarmHours){
-    EEPROM.put(alarmHoursAdress, alarmHours);
-  }
-  //And commit the change
-  EEPROM.commit();
-}
-
-/**
- * Saves the alarmMinutes to EEPROM
- */
-void saveAlarmMinutes(){
-  //Writes the value to the right adress, only if it has changed
-  if(EEPROM.read(alarmMinutesAdress) != alarmMinutes){
-    EEPROM.put(alarmMinutesAdress, alarmMinutes);
-  }
-  //And commit the change
-  EEPROM.commit();
-}
-
-/**
- * Saves the alarmStatus to EEPROM
- */
-void saveAlarmStatus(){
-  //Writes the value to the right adress, only if it has changed
-  if((EEPROM.read(alarmStatusAdress) == 1) != alarmOn){
-    EEPROM.put(alarmStatusAdress, alarmOn);
-  }
-  //And commit the change
-  EEPROM.commit();
-}
-
-/**
-   Restores the buzzer variables
-*/
-void resetAlarmBuzzer() {
-  freq1 = FREQ1;
-  freq2 = FREQ2;
-  beepDelay = BEEP_DELAY;
-}
-
-/**
-   Makes the screeching sound when the alarm is
-*/
-void checkScreeching() {
-  //Take a look at the current time
-  unsigned long now = millis();
-  //See if we are beeping
-  if (now - beepStart < 200) {
-    tone(pinBuzzer, freq1, 5);//850
-    delay(5);
-    tone(pinBuzzer, freq2, 5);//1800
-    delay(5);
-  } else if (now > beepStart) {
-    beepStart = now + beepDelay;
-    if (freq1 < 880) {
-      freq1 += freqStep;
-      freq2 += freqStep;
-      beepDelay -= timeStep;
-    }
-  }
-}
-
-/**
-   Handles the initialization of the encoder stuff
-*/
-void initEncoder() {
-  //Set pinmodes
-  pinMode(pinA, INPUT_PULLUP);
-  pinMode(pinB, INPUT_PULLUP);
-  pinMode(pinButton, INPUT_PULLUP);
-  //Attach an interrupt to the first pin
-  attachInterrupt(digitalPinToInterrupt(pinA), encoderChange, RISING);
-}
-
-/**
-   Returns if the rotary encoder has moved since last reading
-*/
-bool hasEncoderChanged() {
-  return encoderDir != 1;
-}
-
-/**
-   Returns the amount of change the encoder has had since its last reading
-*/
-int readEncoder() {
-  //Backup the current direction for this function
-  int temp = encoderDir;
-  //Now reset the direction to none
-  encoderDir = 1;
-  //And return using the reference we still have
-  return temp - 1;
-}
-
-/**
-   Returns true if a button press was detected, returns false if nothing was detected. Only detects
-   the first rising edge, then nothing for a bit.
-*/
-bool checkEncoderButton() {
-  if (digitalRead(pinButton) == LOW && buttonTimeout == 0) {
-    //Set the timeout to the mentioned value
-    buttonTimeout = BUTTON_DEBOUNCE;
-    //This counts as a press
-    return true;
-  } else if (digitalRead(pinButton) == HIGH) {
-    //Remove a little bit from the timeout untill it's gone
-    if (buttonTimeout > 0) buttonTimeout--;
-  }
-  //If we didn't match any condition, return false
-  return false;
-}
-
-/**
-   Interrupt used for the rotary encoder
-*/
-void encoderChange() {
-  //If they are the same, that is one rotaiton one way
-  if ((digitalRead(pinA) == LOW) != (digitalRead(pinB) == LOW)) {
-    encoderDir = 0;
-  } else {
-    encoderDir = 2;
-  }
-}
-
-/**
    Sets up a network connection
 */
 void initWifi() {
@@ -464,7 +269,7 @@ void initWifi() {
   displayTime(false, false);
   //Access the wifi
   WiFi.mode(WIFI_STA);
-  WiFiMulti.addAP("SSID", "PASS");
+  WiFiMulti.addAP("Nestkast", "banjer1759");
   //get the time data from the online api
   getTime();
 }
