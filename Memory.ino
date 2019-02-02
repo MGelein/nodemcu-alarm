@@ -1,3 +1,4 @@
+#include <EEPROM.h>
 /**
    This file contains all methods containing any EEPROM stuff
 */

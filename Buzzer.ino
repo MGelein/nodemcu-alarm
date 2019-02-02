@@ -20,6 +20,8 @@ byte freqStep = 50;
 byte timeStep = 50;
 //The pin for the buzzer
 const int pinBuzzer = D7;
+//The point in time where the next beep should occur
+unsigned long beepStart = 0;
 
 
 /**

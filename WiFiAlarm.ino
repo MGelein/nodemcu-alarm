@@ -1,11 +1,7 @@
-#include <EEPROM.h>
-#include <TM1637.h>;
-#include <Arduino.h>
 #include <ESP8266WiFi.h>
 #include <ESP8266WiFiMulti.h>
 #include <ESP8266HTTPClient.h>
 #include <WiFiClient.h>
-
 
 /**
    WIFI STUFF
@@ -18,24 +14,6 @@ WiFiClient client;
 HTTPClient http;
 //Amount of minutes between checks
 const byte ONLINE_CHECK_INTERVAL = 15;
-
-/**
-   Screen stuff for the 4 digit 7 segment display
-*/
-//The character for a clear (nothing on the screen);
-const int8_t CLEAR = 0x7f;
-//The screen instance
-TM1637 screen(D6, D5);
-//The numbers on the screen
-int8_t displayNumbers[] = {0, 0, 0, 0};
-//Boolean to see if the colon is on
-bool colonOn = true;
-//If we're hiding the info right now
-bool isBlink = false;
-//Half the period of a blink
-byte blinkPeriod = 15;
-//The amount of time we've spent on a period
-byte blinkTime = 0;
 
 /**
    Mode stuff
@@ -62,7 +40,7 @@ bool firstBoot = true;
 byte hours = 0;
 //Alarm hours
 byte alarmHours = 0;
-//Amount of minutes that h  ave passed
+//Amount of minutes that have passed
 byte minutes = 0;
 //Alarm minutes
 byte alarmMinutes = 0;
@@ -86,14 +64,18 @@ bool alarmSounding = false;
 byte snoozeTime = 0;
 //The amount of times we have snoozed, gets reset if we turn off the alarm
 byte timesSnoozed = 0;
-//The point in time where the next beep should occur
-unsigned long beepStart = 0;
 //If the menu timeout reaches the menu timeout threshold, it resets to display mode
 int menuTimeout = 0;
 //100 updates / second, means 10 seconds for 1000 updates
 #define MENU_TIMEOUT 1000
 
-
+/**
+ * Blinking stuff
+ */
+ //If we're hiding the info right now
+bool isBlink = false;
+//The amount of time we've spent on a period
+byte blinkTime = 0;
 
 /**
    Initial starting point of the code
@@ -107,7 +89,7 @@ void setup() {
   initScreen();
   //Init wifi
   initWifi();
-  //Init encoder stuff
+  //Init encoder stuff  
   initEncoder();
   //Read EEProm to see if stuff was saved
   initEEPROM();
@@ -117,10 +99,8 @@ void setup() {
    Runs the code repeatedly, as often as possible
 */
 void loop() {
-  //Check the blinktimer
-  blinkTime ++;
-  isBlink = blinkTime > blinkPeriod;
-  if (blinkTime > blinkPeriod * 2) blinkTime = 0;
+  //Update the blink timer (for the blinking numbers)
+  updateBlink();
 
   //Handle time keeping as often as possible
   checkTime();
@@ -145,8 +125,8 @@ void loop() {
       if (snoozeTime > 0) resetAlarmBuzzer();
     } else {
       //Depending on the clockMode we have before changing, save to EEPROM
-      if(clockMode == HOUR_MODE) saveAlarmHours();
-      else if(clockMode == MINUTE_MODE) saveAlarmMinutes();
+      if (clockMode == HOUR_MODE) saveAlarmHours();
+      else if (clockMode == MINUTE_MODE) saveAlarmMinutes();
       //Circle the modes with a modulus
       clockMode = (clockMode + 1) % 3;
       //Also reset the blinking for now
@@ -164,8 +144,8 @@ void loop() {
     //After timeout, reset
     if (menuTimeout > MENU_TIMEOUT) {
       //Save the values
-      if(clockMode == HOUR_MODE) saveAlarmHours();
-      else if(clockMode == MINUTE_MODE) saveAlarmMinutes();
+      if (clockMode == HOUR_MODE) saveAlarmHours();
+      else if (clockMode == MINUTE_MODE) saveAlarmMinutes();
       //Reset to display mode
       clockMode = DISPLAY_MODE;
       //And reset the timeout
@@ -214,8 +194,7 @@ void loop() {
   }
 
   //Now handle the modes appropriately
-  if (clockMode == DISPLAY_MODE) {
-  } else if (clockMode == HOUR_MODE) {
+  if (clockMode == HOUR_MODE) {
     //Editing the hour of the alarm
     displayTime(isBlink, false);
   } else if (clockMode == MINUTE_MODE) {
@@ -269,7 +248,7 @@ void initWifi() {
   displayTime(false, false);
   //Access the wifi
   WiFi.mode(WIFI_STA);
-  WiFiMulti.addAP("Nestkast", "banjer1759");
+  WiFiMulti.addAP("SSID", "PASS");
   //get the time data from the online api
   getTime();
 }
@@ -370,9 +349,7 @@ void checkTime() {
     //Finally display time every second
     if (clockMode == DISPLAY_MODE) displayTime(false, false);
     //And toggle the point
-    colonOn = !colonOn;
-    //Set the point in the screen
-    screen.point(colonOn ? POINT_ON : POINT_OFF);
+    toggleColon();
 
     //Log the current time
     Serial.print(String(hours) + ":" + String(minutes) + ":" + String(seconds));
@@ -397,39 +374,4 @@ void checkTime() {
       }
     }
   }
-
-  //Alarm stuff
-  if (alarmSounding && snoozeTime == 0) {
-
-  }
-}
-
-/**
-   Initializes the display
-*/
-void initScreen() {
-  //Set brightness to default
-  screen.set();
-  //Initialize the screen
-  screen.init();
-  //Show the initial time
-  displayTime(false, false);
-}
-
-/**
-   Show the current time HH:MM on the 4 digit display
-*/
-void displayTime(bool hideHours, bool hideMinutes) {
-  //Check what time or alarm to display
-  byte h = (clockMode == DISPLAY_MODE) ? hours : alarmHours;
-  byte m = (clockMode == DISPLAY_MODE) ? minutes : alarmMinutes;
-
-  //Calculate the numbers that go in each place
-  displayNumbers[0] = hideHours ? CLEAR : h / 10;
-  displayNumbers[1] = hideHours ? CLEAR : h % 10;
-  displayNumbers[2] = hideMinutes ? CLEAR : m / 10;
-  displayNumbers[3] = hideMinutes ? CLEAR : m % 10;
-
-  //Now finally show the number on the screen
-  screen.display(displayNumbers);
 }
